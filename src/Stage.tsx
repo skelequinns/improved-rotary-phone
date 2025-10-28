@@ -242,7 +242,7 @@ const CONTENT_KEYWORDS = {
         'wonderful', 'incredible', 'perfect', 'stunning', 'attractive'
     ],
     romantic: [
-        'love', 'adore', 'cherish', 'romance', 'romantic', 'kiss', 'date',
+        'i love you', 'i adore you', 'i cherish you', 'kiss', 'date',
         'relationship', 'feelings', 'heart', 'affection'
     ],
     vulnerability: [
