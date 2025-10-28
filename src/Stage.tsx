@@ -1,23 +1,23 @@
 /**
  * ============================================================================
- * SLOW BURN ROMANCE STAGE
+ * SLOW BURN ROMANCE STAGE - OPTIMIZED
  * ============================================================================
  * A comprehensive romance progression system for LLM character bots
  *
  * Features:
  * - 7 relationship stages (Strangers → Romance)
  * - Affection system (0-250 scale)
- * - 4 character archetypes (configurable via commands)
- * - 4 pacing speeds (configurable via commands)
- * - In-chat command system for configuration
+ * - 4 character archetypes (affects progression speed)
+ * - 4 pacing speeds (affects progression speed)
+ * - Topic unlocking system based on affection
  * - Content unlocking system
  * - Boundary enforcement
  * - Visual progress UI
  *
  * Defaults:
- * - Character Archetype: GUARDED (0.7× multiplier)
- * - Pacing Speed: SLOW (0.75× multiplier)
- * - Combined speed: 0.525× (~476 messages to max)
+ * - Character Archetype: CONFIDENT (1.0× multiplier)
+ * - Pacing Speed: FAST (1.5× multiplier)
+ * - Combined speed: 1.5× (~167 messages to max)
  * - Enable Regression: true
  * - Show Progress UI: true
  * - Verbose Logging: false
@@ -39,7 +39,7 @@ import {LoadResponse} from "@chub-ai/stages-ts/dist/types/load";
 enum CharacterArchetype {
     TSUNDERE = "tsundere",
     SHY = "shy",
-    CONFIDENT = "confident",    // DEFAULT
+    CONFIDENT = "confident",
     GUARDED = "guarded"
 }
 
@@ -50,7 +50,7 @@ enum PacingSpeed {
     GLACIAL = "glacial",
     SLOW = "slow",
     MODERATE = "moderate",
-    FAST = "fast"               // DEFAULT
+    FAST = "fast"
 }
 
 /**
@@ -79,12 +79,11 @@ type ConfigType = {
  * Init state - set once at chat creation
  */
 type InitStateType = {
-    proceduralSeed: string;
     chatCreatedAt: number;
 };
 
 /**
- * Message state - includes user-configurable archetype and pacing
+ * Message state - streamlined to only essential fields
  */
 type MessageStateType = {
     characterArchetype: CharacterArchetype;
@@ -93,19 +92,6 @@ type MessageStateType = {
     relationshipStage: RelationshipStage;
     interactionCount: number;
     lastInteractionTime: number;
-    emotionalTone: string;
-    currentMood: string;
-    flags: {
-        firstCompliment: boolean;
-        sharedVulnerability: boolean;
-        hadArgument: boolean;
-        metFriends: boolean;
-        firstDateAttempt: boolean;
-        confessedFeelings: boolean;
-        firstPhysicalContact: boolean;
-    };
-    discussedTopics: string[];
-    recentConversationSummary: string[];
     sessionStartTime: number;
     messagesThisSession: number;
 };
@@ -123,6 +109,46 @@ type ChatStateType = {
     characterGrowthLevel: number;
     peakAffection: number;
 };
+
+/**
+ * User message analysis result
+ */
+interface MessageAnalysis {
+    hasCompliment: boolean;
+    hasRomanticIntent: boolean;
+    hasVulnerability: boolean;
+    isRude: boolean;
+    hasSexualContent: boolean;
+    hasHumor: boolean;
+    asksAboutCharacter: boolean;
+    isThoughtful: boolean;
+}
+
+/**
+ * Bot message analysis result
+ */
+interface BotAnalysis {
+    hasRomanticLanguage: boolean;
+    hasSexualContent: boolean;
+    isFlirty: boolean;
+    showsVulnerability: boolean;
+    usesTouchDescriptions: boolean;
+}
+
+/**
+ * Boundary violation check result
+ */
+interface BoundaryCheck {
+    violations: string[];
+}
+
+/**
+ * Bot consistency check result
+ */
+interface ConsistencyCheck {
+    appropriate: boolean;
+    reasons: string[];
+}
 
 /**
  * ============================================================================
@@ -144,7 +170,6 @@ const AFFECTION_GAINS = {
     base_message: 2,
     compliment: 5,
     asking_about_character: 3,
-    remembering_conversation: 5,
     emotional_vulnerability: 10,
     making_laugh: 5,
     time_bonus_per_5min: 2,
@@ -153,9 +178,7 @@ const AFFECTION_GAINS = {
 
 const AFFECTION_LOSSES = {
     rude_behavior: -10,
-    pushing_boundaries: -15,
-    inconsistent_behavior: -5,
-    short_disengaged_message: -1
+    pushing_boundaries: -15
 };
 
 const PACING_MULTIPLIERS: { [key in PacingSpeed]: number } = {
@@ -197,10 +220,10 @@ const UNLOCKABLE_TOPICS: { [key: string]: number } = {
 };
 
 const UNLOCKABLE_BEHAVIORS: { [key: string]: number } = {
-    flirty_banter: 125,
-    comfortable_touch: 150,
-    pet_names: 175,
-    sexual_content: 176,
+    flirty_banter: 80,
+    comfortable_touch: 120,
+    pet_names: 75,
+    sexual_content: 155,
     deep_intimacy: 200,
     romantic_confession: 225
 };
@@ -238,27 +261,14 @@ const CONTENT_KEYWORDS = {
  */
 export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateType, ConfigType> {
 
-    private internalState: {
-        conversationHistory: Array<{role: string, content: string, timestamp: number}>;
-        debugLog: string[];
-        currentSessionActive: boolean;
-    };
-
     /**
-     * Constructor with all defaults set
-     * DEFAULTS: guarded archetype, slow pacing, regression enabled, UI shown, logging off
+     * Constructor with defaults
+     * DEFAULTS: CONFIDENT archetype, FAST pacing, regression enabled, UI shown, logging off
      */
     constructor(data: InitialData<InitStateType, ChatStateType, MessageStateType, ConfigType>) {
         super(data);
 
         const {config, messageState, chatState, initState} = data;
-
-        // Initialize internal ephemeral state FIRST
-        this.internalState = {
-            conversationHistory: [],
-            debugLog: [],
-            currentSessionActive: false
-        };
 
         // Set default config with proper null/undefined handling
         this.config = {
@@ -290,25 +300,12 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
 
     private createInitialMessageState(): MessageStateType {
         return {
-            characterArchetype: CharacterArchetype.CONFIDENT,  // DEFAULT
-            pacingSpeed: PacingSpeed.FAST,                 // DEFAULT
+            characterArchetype: CharacterArchetype.CONFIDENT,
+            pacingSpeed: PacingSpeed.FAST,
             affection: 0,
             relationshipStage: RelationshipStage.STRANGERS,
             interactionCount: 0,
             lastInteractionTime: Date.now(),
-            emotionalTone: "neutral",
-            currentMood: "neutral",
-            flags: {
-                firstCompliment: false,
-                sharedVulnerability: false,
-                hadArgument: false,
-                metFriends: false,
-                firstDateAttempt: false,
-                confessedFeelings: false,
-                firstPhysicalContact: false
-            },
-            discussedTopics: [],
-            recentConversationSummary: [],
             sessionStartTime: Date.now(),
             messagesThisSession: 0
         };
@@ -316,7 +313,6 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
 
     private createInitialInitState(): InitStateType {
         return {
-            proceduralSeed: `seed-${Date.now()}`,
             chatCreatedAt: Date.now()
         };
     }
@@ -359,7 +355,7 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
 
     /**
      * ========================================================================
-     * BEFORE PROMPT - MAIN LOGIC WITH COMMAND DETECTION
+     * BEFORE PROMPT - MAIN LOGIC
      * ========================================================================
      */
     async beforePrompt(userMessage: Message): Promise<Partial<StageResponse<ChatStateType, MessageStateType>>> {
@@ -367,48 +363,27 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
 
         this.log(`\n=== BEFORE PROMPT ===`);
         this.log(`User message: "${content.substring(0, 100)}..."`);
-
-        // Check for stage commands FIRST
-        const command = this.detectCommand(content);
-        if (command) {
-            this.log(`Command detected: ${command.type}`);
-            const commandResponse = this.handleCommand(command);
-
-            // Return command response without processing as normal message
-            return {
-                stageDirections: "User is configuring the stage. Do not respond to this message.",
-                messageState: this.messageState,
-                modifiedMessage: null,
-                systemMessage: commandResponse,
-                error: null,
-                chatState: this.chatState
-            };
-        }
-
-        // Normal message processing
         this.log(`Current affection: ${this.messageState.affection}`);
         this.log(`Current stage: ${this.messageState.relationshipStage}`);
 
-        this.internalState.conversationHistory.push({
-            role: 'user',
-            content: content,
-            timestamp: Date.now()
-        });
-
+        // Analyze message
         const analysis = this.analyzeUserMessage(content);
         const affectionChange = this.calculateAffectionChange(analysis);
 
+        // Apply multipliers
         const pacingMult = PACING_MULTIPLIERS[this.messageState.pacingSpeed];
         const archetypeMult = ARCHETYPE_MULTIPLIERS[this.messageState.characterArchetype];
         const finalChange = Math.round(affectionChange * pacingMult * archetypeMult);
 
         this.log(`Affection change: ${finalChange}`);
 
-        const previousAffection = this.messageState.affection;
+        // Update affection
         this.messageState.affection = Math.max(0, Math.min(250, this.messageState.affection + finalChange));
 
+        // Check boundaries
         const boundaryCheck = this.checkBoundaryViolations(analysis, this.messageState.affection);
 
+        // Update stage
         const previousStage = this.messageState.relationshipStage;
         this.messageState.relationshipStage = this.determineStage(this.messageState.affection);
 
@@ -422,14 +397,23 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
             });
         }
 
+        // Update counters
         this.messageState.interactionCount++;
         this.messageState.messagesThisSession++;
         this.messageState.lastInteractionTime = Date.now();
 
+        // Track peak affection
         if (this.messageState.affection > this.chatState.peakAffection) {
             this.chatState.peakAffection = this.messageState.affection;
         }
 
+        // Check and unlock topics based on affection
+        this.checkAndUnlockTopics();
+
+        // Update character growth based on interactions
+        this.updateCharacterGrowth();
+
+        // Generate stage directions
         const stageDirections = this.generateStageDirections(
             this.messageState.relationshipStage,
             this.messageState.affection,
@@ -458,12 +442,6 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
 
         this.log(`\n=== AFTER RESPONSE ===`);
 
-        this.internalState.conversationHistory.push({
-            role: 'bot',
-            content: content,
-            timestamp: Date.now()
-        });
-
         const botAnalysis = this.analyzeBotMessage(content);
         const consistencyCheck = this.checkBotConsistency(
             content,
@@ -476,12 +454,11 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
 
         if (!consistencyCheck.appropriate) {
             this.log(`⚠️ Bot behavior inconsistent with stage!`);
-            modifiedMessage = this.rewriteBotMessage(content, this.messageState.relationshipStage);
             correctionDirections = this.generateCorrectionDirections(consistencyCheck.reasons);
         }
 
+        // Check for emotional moments and award bonus affection
         const emotionalMoments = this.detectEmotionalMoments(content, botAnalysis);
-
         let bonusAffection = 0;
         if (emotionalMoments.length > 0) {
             bonusAffection = 2;
@@ -509,11 +486,11 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
 
     /**
      * ========================================================================
-     * ANALYSIS METHODS (ABBREVIATED FOR BREVITY)
+     * ANALYSIS METHODS
      * ========================================================================
      */
 
-    private analyzeUserMessage(content: string): any {
+    private analyzeUserMessage(content: string): MessageAnalysis {
         const lowerContent = content.toLowerCase();
         return {
             hasCompliment: this.containsKeywords(lowerContent, CONTENT_KEYWORDS.compliments),
@@ -523,22 +500,18 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
             hasSexualContent: this.containsKeywords(lowerContent, CONTENT_KEYWORDS.sexual),
             hasHumor: this.containsKeywords(lowerContent, CONTENT_KEYWORDS.humor),
             asksAboutCharacter: this.detectsQuestionPattern(content),
-            referencesHistory: this.detectsHistoricalReference(content),
-            isShort: content.length < 20,
-            isThoughtful: content.length > 100 && !this.containsKeywords(lowerContent, CONTENT_KEYWORDS.rude),
-            wordCount: content.split(' ').length
+            isThoughtful: content.length > 100 && !this.containsKeywords(lowerContent, CONTENT_KEYWORDS.rude)
         };
     }
 
-    private analyzeBotMessage(content: string): any {
+    private analyzeBotMessage(content: string): BotAnalysis {
         const lowerContent = content.toLowerCase();
         return {
             hasRomanticLanguage: this.containsKeywords(lowerContent, CONTENT_KEYWORDS.romantic),
             hasSexualContent: this.containsKeywords(lowerContent, CONTENT_KEYWORDS.sexual),
             isFlirty: this.detectsFlirtation(content),
             showsVulnerability: this.containsKeywords(lowerContent, CONTENT_KEYWORDS.vulnerability),
-            usesTouchDescriptions: this.detectsTouchDescriptions(content),
-            length: content.length
+            usesTouchDescriptions: this.detectsTouchDescriptions(content)
         };
     }
 
@@ -550,12 +523,6 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
         const questionWords = ['what', 'who', 'where', 'when', 'why', 'how', 'tell me', 'can you'];
         const lowerText = text.toLowerCase();
         return questionWords.some(word => lowerText.includes(word)) && text.includes('?');
-    }
-
-    private detectsHistoricalReference(text: string): boolean {
-        const historyWords = ['remember', 'earlier', 'before', 'yesterday', 'last time', 'you said', 'we talked'];
-        const lowerText = text.toLowerCase();
-        return historyWords.some(word => lowerText.includes(word));
     }
 
     private detectsFlirtation(text: string): boolean {
@@ -570,21 +537,19 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
         return touchWords.some(word => lowerText.includes(word));
     }
 
-    private calculateAffectionChange(analysis: any): number {
+    private calculateAffectionChange(analysis: MessageAnalysis): number {
         let change = 0;
 
+        // Base gain
         change += AFFECTION_GAINS.base_message;
 
+        // Positive behaviors
         if (analysis.hasCompliment) {
             change += AFFECTION_GAINS.compliment;
         }
 
         if (analysis.asksAboutCharacter) {
             change += AFFECTION_GAINS.asking_about_character;
-        }
-
-        if (analysis.referencesHistory) {
-            change += AFFECTION_GAINS.remembering_conversation;
         }
 
         if (analysis.hasVulnerability) {
@@ -599,6 +564,7 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
             change += AFFECTION_GAINS.thoughtful_message;
         }
 
+        // Time bonus
         const timeSinceStart = Date.now() - this.messageState.sessionStartTime;
         const minutesActive = Math.floor(timeSinceStart / (5 * 60 * 1000));
         if (minutesActive > 0) {
@@ -606,6 +572,7 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
             change += timeBonus;
         }
 
+        // Negative behaviors
         if (analysis.isRude) {
             const penalty = this.config.enableRegression ?
                 AFFECTION_LOSSES.rude_behavior * REGRESSION_MULTIPLIER :
@@ -618,10 +585,6 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
                 AFFECTION_LOSSES.pushing_boundaries * REGRESSION_MULTIPLIER :
                 AFFECTION_LOSSES.pushing_boundaries;
             change += penalty;
-        }
-
-        if (analysis.isShort && this.messageState.messagesThisSession > 3) {
-            change += AFFECTION_LOSSES.short_disengaged_message;
         }
 
         return change;
@@ -637,7 +600,7 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
         return RelationshipStage.STRANGERS;
     }
 
-    private checkBoundaryViolations(analysis: any, currentAffection: number): any {
+    private checkBoundaryViolations(analysis: MessageAnalysis, currentAffection: number): BoundaryCheck {
         const violations: string[] = [];
 
         if (analysis.hasSexualContent && currentAffection < UNLOCKABLE_BEHAVIORS.sexual_content) {
@@ -648,10 +611,10 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
             violations.push("romantic_too_early");
         }
 
-        return { violations: violations, hardBoundariesViolated: [] };
+        return { violations };
     }
 
-    private checkBotConsistency(content: string, stage: RelationshipStage, affection: number): any {
+    private checkBotConsistency(content: string, stage: RelationshipStage, affection: number): ConsistencyCheck {
         const reasons: string[] = [];
         const lowerContent = content.toLowerCase();
 
@@ -673,17 +636,67 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
             }
         }
 
-        return { appropriate: reasons.length === 0, reasons: reasons };
+        return { appropriate: reasons.length === 0, reasons };
     }
 
-    private rewriteBotMessage(content: string, stage: RelationshipStage): string {
-        let rewritten = content;
-        CONTENT_KEYWORDS.sexual.forEach(word => {
-            const regex = new RegExp(word, 'gi');
-            rewritten = rewritten.replace(regex, '...');
-        });
-        return rewritten;
+    /**
+     * ========================================================================
+     * TOPIC UNLOCKING SYSTEM (NEW IMPLEMENTATION)
+     * ========================================================================
+     */
+
+    private checkAndUnlockTopics(): void {
+        const currentAffection = this.messageState.affection;
+
+        for (const [topic, threshold] of Object.entries(UNLOCKABLE_TOPICS)) {
+            // If affection meets threshold and topic not already unlocked
+            if (currentAffection >= threshold && !this.chatState.permanentlyUnlockedTopics.includes(topic)) {
+                this.chatState.permanentlyUnlockedTopics.push(topic);
+                this.log(`🔓 Topic unlocked: ${topic} (affection: ${currentAffection})`);
+
+                // Record as significant event
+                this.chatState.significantEvents.push({
+                    event: `topic_unlocked_${topic}`,
+                    timestamp: Date.now(),
+                    affectionAtTime: currentAffection
+                });
+            }
+        }
     }
+
+    private updateCharacterGrowth(): void {
+        // Character growth increases based on significant events and relationship progression
+        // Max growth level is 100
+        const eventsCount = this.chatState.significantEvents.length;
+        const stageMultiplier = this.getStageMultiplier(this.messageState.relationshipStage);
+
+        // Growth formula: (events * 2 + stage_bonus) capped at 100
+        const calculatedGrowth = Math.min(100, (eventsCount * 2) + stageMultiplier);
+
+        if (calculatedGrowth > this.chatState.characterGrowthLevel) {
+            this.chatState.characterGrowthLevel = calculatedGrowth;
+            this.log(`📈 Character growth: ${this.chatState.characterGrowthLevel}/100`);
+        }
+    }
+
+    private getStageMultiplier(stage: RelationshipStage): number {
+        const multipliers: { [key in RelationshipStage]: number } = {
+            [RelationshipStage.STRANGERS]: 0,
+            [RelationshipStage.ACQUAINTANCES]: 5,
+            [RelationshipStage.FRIENDS]: 10,
+            [RelationshipStage.GOOD_FRIENDS]: 15,
+            [RelationshipStage.CLOSE_FRIENDS]: 20,
+            [RelationshipStage.ROMANTIC_TENSION]: 25,
+            [RelationshipStage.ROMANCE]: 30
+        };
+        return multipliers[stage];
+    }
+
+    /**
+     * ========================================================================
+     * STAGE DIRECTION GENERATION
+     * ========================================================================
+     */
 
     private generateStageDirections(
         stage: RelationshipStage,
@@ -703,6 +716,12 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
         const unlockedBehaviors = this.getUnlockedBehaviors(affection);
         if (unlockedBehaviors.length > 0) {
             directions.push(`Unlocked behaviors: ${unlockedBehaviors.join(', ')}`);
+        }
+
+        // Add unlocked topics to directions
+        const unlockedTopics = this.getUnlockedTopicsForDirections();
+        if (unlockedTopics.length > 0) {
+            directions.push(`Topics you can discuss openly: ${unlockedTopics.join(', ')}`);
         }
 
         return directions.join(' ');
@@ -741,11 +760,17 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
         return unlocked;
     }
 
+    private getUnlockedTopicsForDirections(): string[] {
+        return this.chatState.permanentlyUnlockedTopics.map(topic =>
+            topic.replace('_', ' ')
+        );
+    }
+
     private generateCorrectionDirections(reasons: string[]): string {
         return "Your previous response was too forward for the current relationship stage. Reasons: " + reasons.join(', ');
     }
 
-    private detectEmotionalMoments(content: string, analysis: any): string[] {
+    private detectEmotionalMoments(content: string, analysis: BotAnalysis): string[] {
         const moments: string[] = [];
 
         if (analysis.showsVulnerability) {
@@ -763,56 +788,47 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
         return moments;
     }
 
+    /**
+     * ========================================================================
+     * STATE VALIDATION
+     * ========================================================================
+     */
+
     private validateAndRepairState(state: MessageStateType): MessageStateType {
         const repaired = { ...state };
 
+        // Validate affection bounds
         if (repaired.affection < 0) repaired.affection = 0;
         if (repaired.affection > 250) repaired.affection = 250;
 
+        // Ensure stage matches affection
         const correctStage = this.determineStage(repaired.affection);
         if (repaired.relationshipStage !== correctStage) {
             repaired.relationshipStage = correctStage;
         }
 
+        // Validate archetype
         if (!repaired.characterArchetype || !Object.values(CharacterArchetype).includes(repaired.characterArchetype)) {
-            repaired.characterArchetype = CharacterArchetype.GUARDED;
+            repaired.characterArchetype = CharacterArchetype.CONFIDENT;
         }
 
+        // Validate pacing
         if (!repaired.pacingSpeed || !Object.values(PacingSpeed).includes(repaired.pacingSpeed)) {
-            repaired.pacingSpeed = PacingSpeed.SLOW;
+            repaired.pacingSpeed = PacingSpeed.FAST;
         }
-
-        if (!repaired.flags) {
-            repaired.flags = {
-                firstCompliment: false,
-                sharedVulnerability: false,
-                hadArgument: false,
-                metFriends: false,
-                firstDateAttempt: false,
-                confessedFeelings: false,
-                firstPhysicalContact: false
-            };
-        }
-
-        if (!repaired.discussedTopics) repaired.discussedTopics = [];
-        if (!repaired.recentConversationSummary) repaired.recentConversationSummary = [];
 
         return repaired;
     }
 
+    /**
+     * ========================================================================
+     * LOGGING
+     * ========================================================================
+     */
+
     private log(message: string): void {
         if (this.config && this.config.verboseLogging) {
             console.log(`[SlowBurnRomance] ${message}`);
-        }
-
-        // Always store in internal log for debugging
-        if (this.internalState && this.internalState.debugLog) {
-            this.internalState.debugLog.push(message);
-
-            // Keep log bounded
-            if (this.internalState.debugLog.length > 100) {
-                this.internalState.debugLog.shift();
-            }
         }
     }
 
@@ -844,6 +860,8 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
             behavior => affection >= UNLOCKABLE_BEHAVIORS[behavior]
         );
 
+        const unlockedTopics = this.chatState.permanentlyUnlockedTopics;
+
         const combinedMultiplier = (ARCHETYPE_MULTIPLIERS[characterArchetype] * PACING_MULTIPLIERS[pacingSpeed]).toFixed(2);
 
         return (
@@ -872,6 +890,7 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
                         Stage: {relationshipStage.replace('_', ' ').toUpperCase()}
                     </div>
 
+                    {/* Affection bar */}
                     <div style={{
                         backgroundColor: '#e9ecef',
                         borderRadius: '4px',
@@ -914,6 +933,7 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
                     </div>
                 </div>
 
+                {/* Settings */}
                 <div style={{
                     marginTop: '12px',
                     paddingTop: '12px',
@@ -935,9 +955,11 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
                         <div>{characterArchetype.toUpperCase()} archetype</div>
                         <div>{pacingSpeed.toUpperCase()} pacing</div>
                         <div>Combined: {combinedMultiplier}× speed</div>
+                        <div>Growth: {this.chatState.characterGrowthLevel}/100</div>
                     </div>
                 </div>
 
+                {/* Unlocked behaviors */}
                 {unlockedBehaviors.length > 0 && (
                     <div style={{ marginTop: '12px' }}>
                         <div style={{
@@ -946,7 +968,7 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
                             color: '#495057',
                             marginBottom: '6px'
                         }}>
-                            Unlocked:
+                            Unlocked Behaviors:
                         </div>
                         <div style={{
                             display: 'flex',
@@ -962,6 +984,37 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
                                     fontSize: '10px'
                                 }}>
                                     {behavior.replace('_', ' ')}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Unlocked topics (NEW) */}
+                {unlockedTopics.length > 0 && (
+                    <div style={{ marginTop: '12px' }}>
+                        <div style={{
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            color: '#495057',
+                            marginBottom: '6px'
+                        }}>
+                            Unlocked Topics:
+                        </div>
+                        <div style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: '4px'
+                        }}>
+                            {unlockedTopics.map(topic => (
+                                <span key={topic} style={{
+                                    padding: '2px 8px',
+                                    backgroundColor: '#e7f5ff',
+                                    color: '#1971c2',
+                                    borderRadius: '12px',
+                                    fontSize: '10px'
+                                }}>
+                                    {topic.replace('_', ' ')}
                                 </span>
                             ))}
                         </div>

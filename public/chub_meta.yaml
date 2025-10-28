@@ -75,14 +75,6 @@ state_schema:
     type: object
     properties:
       # User-configurable via in-chat commands
-      characterArchetype:
-        type: string
-        enum: ["tsundere", "shy", "confident", "guarded"]
-        description: "Character archetype (configurable via ((set archetype)) command)"
-      pacingSpeed:
-        type: string
-        enum: ["glacial", "slow", "moderate", "fast"]
-        description: "Progression pacing (configurable via ((set pacing)) command)"
 
       # Progression tracking
       affection:
@@ -99,14 +91,6 @@ state_schema:
           - "close_friends"
           - "romantic_tension"
           - "romance"
-      interactionCount:
-        type: integer
-      lastInteractionTime:
-        type: integer
-      emotionalTone:
-        type: string
-      currentMood:
-        type: string
       flags:
         type: object
         properties:
