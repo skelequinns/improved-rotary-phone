@@ -243,22 +243,27 @@ const CONTENT_KEYWORDS = {
     ],
     romantic: [
         'i love you', 'i adore you', 'i cherish you', 'kiss', 'date',
-        'relationship', 'feelings', 'heart', 'affection'
+        'commit', 'be together', 'future together', 'marry me', 'marry you',
+        'caress', 'our relationship', 'affection', 'date with me', 'date you',
+        'be with you'
     ],
     vulnerability: [
         'scared', 'afraid', 'worried', 'insecure', 'anxious', 'fear',
-        'vulnerable', 'hurt', 'pain', 'struggling', 'difficult'
+        'vulnerable', 'hurt', 'pain', 'struggling', 'difficult',
+        'vulnerability', 'open up', 'terrified', 'terrifies'
     ],
     rude: [
-        'stupid', 'idiot', 'dumb', 'shut up', 'hate', 'ugly', 'loser',
-        'worthless', 'pathetic', 'annoying'
+        'you\'re stupid', 'you\'re an idiot', 'you\'re dumb', 'shut up', 'i hate you', 'you\'re ugly', 'loser',
+        'you\'re worthless', 'you\'re pathetic', 'you\'re annoying', 'you suck', 'you\'re the worst',
+        'you\'re annoying', 'leave me alone', 'go away', 'i don\'t like you',
+        'never want you', 'never love you', 'go fuck yourself'
     ],
     sexual: [
         'sex', 'sexual', 'fuck', 'cock', 'pussy', 'dick', 'naked', 'bed',
-        'seduce', 'desire', 'lust', 'aroused', 'explicit', 'arousal'
+        'seduce', 'desire', 'lust', 'aroused', 'explicit', 'arousal', 'make love'
     ],
     humor: [
-        'chuckle', 'giggle', 'grin', 'funny', 'laugh', 'hilarious'
+        'chuckle', 'giggle', 'grin', 'funny', 'laugh', 'hilarious', 'guffaw'
     ]
 };
 
