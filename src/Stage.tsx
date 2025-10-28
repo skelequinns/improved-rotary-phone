@@ -275,34 +275,52 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
     constructor(data: InitialData<InitStateType, ChatStateType, MessageStateType, ConfigType>) {
         super(data);
 
-        const {config, messageState, chatState, initState} = data;
+        try {
+            const {config, messageState, chatState, initState} = data;
 
-        // Set default config with proper null/undefined handling
-        this.config = {
-            enableRegression: config?.enableRegression !== undefined ? config.enableRegression : true,
-            showProgressUI: config?.showProgressUI !== undefined ? config.showProgressUI : true,
-            verboseLogging: config?.verboseLogging !== undefined ? config.verboseLogging : false
-        };
+            // Set default config with proper null/undefined handling
+            this.config = {
+                enableRegression: config?.enableRegression !== undefined ? config.enableRegression : true,
+                showProgressUI: config?.showProgressUI !== undefined ? config.showProgressUI : true,
+                verboseLogging: config?.verboseLogging !== undefined ? config.verboseLogging : false
+            };
 
-        if (!messageState) {
+            if (!messageState) {
+                this.messageState = this.createInitialMessageState();
+            }
+
+            if (!chatState) {
+                this.chatState = {
+                    permanentlyUnlockedTopics: [],
+                    significantEvents: [],
+                    characterGrowthLevel: 0,
+                    peakAffection: 0
+                };
+            }
+
+            if (!initState) {
+                this.initState = this.createInitialInitState();
+            }
+
+            this.log("Stage constructor completed.");
+            this.log(`Defaults: ${this.messageState.characterArchetype} archetype, ${this.messageState.pacingSpeed} pacing`);
+        } catch (error) {
+            console.error("[SlowBurnRomance] Constructor error:", error);
+            // Ensure we have valid default state even if initialization fails
+            this.config = {
+                enableRegression: true,
+                showProgressUI: true,
+                verboseLogging: false
+            };
             this.messageState = this.createInitialMessageState();
-        }
-
-        if (!chatState) {
             this.chatState = {
                 permanentlyUnlockedTopics: [],
                 significantEvents: [],
                 characterGrowthLevel: 0,
                 peakAffection: 0
             };
-        }
-
-        if (!initState) {
             this.initState = this.createInitialInitState();
         }
-
-        this.log("Stage constructor completed.");
-        this.log(`Defaults: ${this.messageState.characterArchetype} archetype, ${this.messageState.pacingSpeed} pacing`);
     }
 
     private createInitialMessageState(): MessageStateType {
@@ -329,12 +347,8 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
 
         const characterCount = Object.keys(this.characters || {}).length;
         if (characterCount === 0) {
-            return {
-                success: false,
-                error: "No characters found. Slow Burn Romance stage requires at least one character.",
-                initState: null,
-                chatState: null
-            };
+            console.warn("[SlowBurnRomance] No characters found, but continuing anyway");
+            // Don't fail - just continue with default state
         }
 
         if (this.messageState) {
@@ -845,15 +859,16 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
      * ========================================================================
      */
     render(): ReactElement {
-        if (!this.config || !this.messageState || !this.initState) {
-            return <div>Loading...</div>;
-        }
+        try {
+            if (!this.config || !this.messageState || !this.initState) {
+                return <div style={{ padding: '16px', color: '#666' }}>Initializing...</div>;
+            }
 
-        if (!this.config.showProgressUI) {
-            return <div></div>;
-        }
+            if (!this.config.showProgressUI) {
+                return <div></div>;
+            }
 
-        const { affection, relationshipStage, characterArchetype, pacingSpeed } = this.messageState;
+            const { affection, relationshipStage, characterArchetype, pacingSpeed } = this.messageState;
 
         const stageKeys = Object.keys(STAGE_THRESHOLDS) as RelationshipStage[];
         const currentStageIndex = stageKeys.indexOf(relationshipStage);
@@ -1029,6 +1044,10 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
                 )}
             </div>
         );
+        } catch (error) {
+            console.error("[SlowBurnRomance] Render error:", error);
+            return <div style={{ padding: '16px', color: '#d32f2f' }}>Error rendering stage</div>;
+        }
     }
 
     private getProgressColor(stage: RelationshipStage): string {
