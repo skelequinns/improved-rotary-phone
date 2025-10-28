@@ -863,7 +863,7 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            color: '#212529',
+                            color: '#dee2e6',
                             fontSize: '12px',
                             fontWeight: '600'
                         }}>
