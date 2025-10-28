@@ -851,13 +851,13 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
      * RENDER METHOD - FIXED VERSION
      * ========================================================================
      */
-    render(): ReactElement | null {
+    render(): ReactElement {
         if (!this.config || !this.messageState || !this.initState) {
-            return null;
+            return <></>;
         }
 
         if (!this.config.showProgressUI) {
-            return null;
+            return <></>;
         }
 
         const { affection, relationshipStage, characterArchetype, pacingSpeed } = this.messageState;
