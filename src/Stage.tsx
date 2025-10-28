@@ -4,13 +4,6 @@
  * ============================================================================
  * A comprehensive romance progression system for LLM character bots
  *
- * FIXES APPLIED (2025-10-28):
- * - Added chatState null check in render() to prevent infinite loop
- * - Added safe defaults for array properties
- * - Enhanced constructor with defensive initialization
- * - Added messageState to load() return
- * - Added division-by-zero protection in stageProgress
- * - Wrapped load() in try-catch for error handling
  *
  * Features:
  * - 7 relationship stages (Strangers → Romance)
