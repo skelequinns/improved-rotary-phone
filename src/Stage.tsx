@@ -261,13 +261,6 @@ const CONTENT_KEYWORDS = {
  */
 export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateType, ConfigType> {
 
-    // *** FIX: Explicitly declare inherited properties from StageBase ***
-    declare messageState: MessageStateType;
-    declare chatState: ChatStateType;
-    declare initState: InitStateType;
-    declare config: ConfigType;
-    declare characters: any; // Contains character data from the chat
-
     /**
      * Constructor with defaults
      * DEFAULTS: CONFIDENT archetype, FAST pacing, regression enabled, UI shown, logging off
@@ -275,52 +268,38 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
     constructor(data: InitialData<InitStateType, ChatStateType, MessageStateType, ConfigType>) {
         super(data);
 
-        try {
-            const {config, messageState, chatState, initState} = data;
+        const {config, messageState, chatState, initState} = data;
 
-            // Set default config with proper null/undefined handling
-            this.config = {
-                enableRegression: config?.enableRegression !== undefined ? config.enableRegression : true,
-                showProgressUI: config?.showProgressUI !== undefined ? config.showProgressUI : true,
-                verboseLogging: config?.verboseLogging !== undefined ? config.verboseLogging : false
-            };
+        // Set default config with proper null/undefined handling
+        this.config = {
+            enableRegression: config?.enableRegression !== undefined ? config.enableRegression : true,
+            showProgressUI: config?.showProgressUI !== undefined ? config.showProgressUI : true,
+            verboseLogging: config?.verboseLogging !== undefined ? config.verboseLogging : false
+        };
 
-            if (!messageState) {
-                this.messageState = this.createInitialMessageState();
-            }
-
-            if (!chatState) {
-                this.chatState = {
-                    permanentlyUnlockedTopics: [],
-                    significantEvents: [],
-                    characterGrowthLevel: 0,
-                    peakAffection: 0
-                };
-            }
-
-            if (!initState) {
-                this.initState = this.createInitialInitState();
-            }
-
-            this.log("Stage constructor completed.");
-            this.log(`Defaults: ${this.messageState.characterArchetype} archetype, ${this.messageState.pacingSpeed} pacing`);
-        } catch (error) {
-            console.error("[SlowBurnRomance] Constructor error:", error);
-            // Ensure we have valid default state even if initialization fails
-            this.config = {
-                enableRegression: true,
-                showProgressUI: true,
-                verboseLogging: false
-            };
+        // FIXED: Ensure archetype and pacing are always set, even if messageState exists
+        if (!messageState) {
             this.messageState = this.createInitialMessageState();
+        } else {
+            // Validate and repair existing state to ensure archetype/pacing are set
+            this.messageState = this.validateAndRepairState(messageState);
+        }
+
+        if (!chatState) {
             this.chatState = {
                 permanentlyUnlockedTopics: [],
                 significantEvents: [],
                 characterGrowthLevel: 0,
                 peakAffection: 0
             };
+        }
+
+        if (!initState) {
             this.initState = this.createInitialInitState();
         }
+
+        this.log("Stage constructor completed.");
+        this.log(`Defaults: ${this.messageState.characterArchetype} archetype, ${this.messageState.pacingSpeed} pacing`);
     }
 
     private createInitialMessageState(): MessageStateType {
@@ -347,8 +326,12 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
 
         const characterCount = Object.keys(this.characters || {}).length;
         if (characterCount === 0) {
-            console.warn("[SlowBurnRomance] No characters found, but continuing anyway");
-            // Don't fail - just continue with default state
+            return {
+                success: false,
+                error: "No characters found. Slow Burn Romance stage requires at least one character.",
+                initState: null,
+                chatState: null
+            };
         }
 
         if (this.messageState) {
@@ -520,8 +503,8 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
             isRude: this.containsKeywords(lowerContent, CONTENT_KEYWORDS.rude),
             hasSexualContent: this.containsKeywords(lowerContent, CONTENT_KEYWORDS.sexual),
             hasHumor: this.containsKeywords(lowerContent, CONTENT_KEYWORDS.humor),
-            asksAboutCharacter: this.detectsQuestionPattern(content),
-            isThoughtful: content.length > 100 && !this.containsKeywords(lowerContent, CONTENT_KEYWORDS.rude)
+            asksAboutCharacter: this.asksAboutCharacter(lowerContent),
+            isThoughtful: content.length > 100 && content.includes('?')
         };
     }
 
@@ -540,10 +523,12 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
         return keywords.some(keyword => text.includes(keyword));
     }
 
-    private detectsQuestionPattern(text: string): boolean {
-        const questionWords = ['what', 'who', 'where', 'when', 'why', 'how', 'tell me', 'can you'];
-        const lowerText = text.toLowerCase();
-        return questionWords.some(word => lowerText.includes(word)) && text.includes('?');
+    private asksAboutCharacter(text: string): boolean {
+        const characterQuestions = [
+            'what do you', 'how do you feel', 'tell me about',
+            'what are you', 'who are you', 'what\'s your'
+        ];
+        return characterQuestions.some(phrase => text.includes(phrase));
     }
 
     private detectsFlirtation(text: string): boolean {
@@ -611,6 +596,49 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
         return change;
     }
 
+    private checkBoundaryViolations(analysis: MessageAnalysis, affection: number): BoundaryCheck {
+        const violations: string[] = [];
+
+        if (analysis.hasRomanticIntent && affection < UNLOCKABLE_BEHAVIORS.flirty_banter) {
+            violations.push("romantic_intent_too_early");
+        }
+
+        if (analysis.hasSexualContent && affection < UNLOCKABLE_BEHAVIORS.sexual_content) {
+            violations.push("sexual_content_too_early");
+        }
+
+        return { violations };
+    }
+
+    private checkBotConsistency(
+        content: string,
+        stage: RelationshipStage,
+        affection: number
+    ): ConsistencyCheck {
+        const analysis = this.analyzeBotMessage(content);
+        const reasons: string[] = [];
+
+        // Check for inappropriate romantic content
+        if (analysis.hasRomanticLanguage && affection < UNLOCKABLE_BEHAVIORS.flirty_banter) {
+            reasons.push("expressing romantic feelings too early");
+        }
+
+        // Check for inappropriate sexual content
+        if (analysis.hasSexualContent && affection < UNLOCKABLE_BEHAVIORS.sexual_content) {
+            reasons.push("including sexual content before unlocked");
+        }
+
+        // Check for inappropriate physical touch
+        if (analysis.usesTouchDescriptions && affection < UNLOCKABLE_BEHAVIORS.comfortable_touch) {
+            reasons.push("describing physical touch too early");
+        }
+
+        return {
+            appropriate: reasons.length === 0,
+            reasons: reasons
+        };
+    }
+
     private determineStage(affection: number): RelationshipStage {
         if (affection >= STAGE_THRESHOLDS[RelationshipStage.ROMANCE]) return RelationshipStage.ROMANCE;
         if (affection >= STAGE_THRESHOLDS[RelationshipStage.ROMANTIC_TENSION]) return RelationshipStage.ROMANTIC_TENSION;
@@ -621,72 +649,29 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
         return RelationshipStage.STRANGERS;
     }
 
-    private checkBoundaryViolations(analysis: MessageAnalysis, currentAffection: number): BoundaryCheck {
-        const violations: string[] = [];
-
-        if (analysis.hasSexualContent && currentAffection < UNLOCKABLE_BEHAVIORS.sexual_content) {
-            violations.push("sexual_content_too_early");
-        }
-
-        if (analysis.hasRomanticIntent && currentAffection < UNLOCKABLE_BEHAVIORS.flirty_banter) {
-            violations.push("romantic_too_early");
-        }
-
-        return { violations };
-    }
-
-    private checkBotConsistency(content: string, stage: RelationshipStage, affection: number): ConsistencyCheck {
-        const reasons: string[] = [];
-        const lowerContent = content.toLowerCase();
-
-        if (affection < UNLOCKABLE_BEHAVIORS.sexual_content) {
-            if (this.containsKeywords(lowerContent, CONTENT_KEYWORDS.sexual)) {
-                reasons.push("sexual_content_too_early");
-            }
-        }
-
-        if (affection < UNLOCKABLE_BEHAVIORS.flirty_banter) {
-            if (this.detectsFlirtation(content)) {
-                reasons.push("flirtation_too_early");
-            }
-        }
-
-        if (affection < UNLOCKABLE_BEHAVIORS.comfortable_touch) {
-            if (this.detectsTouchDescriptions(content)) {
-                reasons.push("touch_too_early");
-            }
-        }
-
-        return { appropriate: reasons.length === 0, reasons };
-    }
-
     /**
      * ========================================================================
-     * TOPIC UNLOCKING SYSTEM (NEW IMPLEMENTATION)
+     * TOPIC UNLOCKING
      * ========================================================================
      */
 
     private checkAndUnlockTopics(): void {
-        const currentAffection = this.messageState.affection;
-
         for (const [topic, threshold] of Object.entries(UNLOCKABLE_TOPICS)) {
-            // If affection meets threshold and topic not already unlocked
-            if (currentAffection >= threshold && !this.chatState.permanentlyUnlockedTopics.includes(topic)) {
+            if (this.messageState.affection >= threshold &&
+                !this.chatState.permanentlyUnlockedTopics.includes(topic)) {
                 this.chatState.permanentlyUnlockedTopics.push(topic);
-                this.log(`🔓 Topic unlocked: ${topic} (affection: ${currentAffection})`);
-
-                // Record as significant event
-                this.chatState.significantEvents.push({
-                    event: `topic_unlocked_${topic}`,
-                    timestamp: Date.now(),
-                    affectionAtTime: currentAffection
-                });
+                this.log(`🔓 Unlocked topic: ${topic}`);
             }
         }
     }
 
+    /**
+     * ========================================================================
+     * CHARACTER GROWTH
+     * ========================================================================
+     */
+
     private updateCharacterGrowth(): void {
-        // Character growth increases based on significant events and relationship progression
         // Max growth level is 100
         const eventsCount = this.chatState.significantEvents.length;
         const stageMultiplier = this.getStageMultiplier(this.messageState.relationshipStage);
@@ -828,14 +813,16 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
             repaired.relationshipStage = correctStage;
         }
 
-        // Validate archetype
+        // FIXED: Validate archetype - ensure it's always set
         if (!repaired.characterArchetype || !Object.values(CharacterArchetype).includes(repaired.characterArchetype)) {
             repaired.characterArchetype = CharacterArchetype.CONFIDENT;
+            this.log("⚠️ Archetype was missing or invalid, reset to CONFIDENT");
         }
 
-        // Validate pacing
+        // FIXED: Validate pacing - ensure it's always set
         if (!repaired.pacingSpeed || !Object.values(PacingSpeed).includes(repaired.pacingSpeed)) {
             repaired.pacingSpeed = PacingSpeed.FAST;
+            this.log("⚠️ Pacing was missing or invalid, reset to FAST");
         }
 
         return repaired;
@@ -855,20 +842,19 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
 
     /**
      * ========================================================================
-     * RENDER METHOD
+     * RENDER METHOD - FIXED VERSION
      * ========================================================================
      */
-    render(): ReactElement {
-        try {
-            if (!this.config || !this.messageState || !this.initState) {
-                return <div style={{ padding: '16px', color: '#666' }}>Initializing...</div>;
-            }
+    render(): ReactElement | null {
+        if (!this.config || !this.messageState || !this.initState) {
+            return null;
+        }
 
-            if (!this.config.showProgressUI) {
-                return <div></div>;
-            }
+        if (!this.config.showProgressUI) {
+            return null;
+        }
 
-            const { affection, relationshipStage, characterArchetype, pacingSpeed } = this.messageState;
+        const { affection, relationshipStage, characterArchetype, pacingSpeed } = this.messageState;
 
         const stageKeys = Object.keys(STAGE_THRESHOLDS) as RelationshipStage[];
         const currentStageIndex = stageKeys.indexOf(relationshipStage);
@@ -938,7 +924,7 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            color: '#212529',
+                            color: '#E1E8F0',
                             fontSize: '12px',
                             fontWeight: '600'
                         }}>
@@ -954,8 +940,6 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
                         Stage progress: {Math.round(stageProgress)}%
                     </div>
                 </div>
-
-                {/* Settings */}
                 <div style={{
                     marginTop: '12px',
                     paddingTop: '12px',
@@ -977,7 +961,6 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
                         <div>{characterArchetype.toUpperCase()} archetype</div>
                         <div>{pacingSpeed.toUpperCase()} pacing</div>
                         <div>Combined: {combinedMultiplier}× speed</div>
-                        <div>Growth: {this.chatState.characterGrowthLevel}/100</div>
                     </div>
                 </div>
 
@@ -1044,10 +1027,6 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
                 )}
             </div>
         );
-        } catch (error) {
-            console.error("[SlowBurnRomance] Render error:", error);
-            return <div style={{ padding: '16px', color: '#d32f2f' }}>Error rendering stage</div>;
-        }
     }
 
     private getProgressColor(stage: RelationshipStage): string {
