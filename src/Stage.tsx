@@ -261,6 +261,12 @@ const CONTENT_KEYWORDS = {
  */
 export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateType, ConfigType> {
 
+    // *** FIX: Explicitly declare inherited properties from StageBase ***
+    declare messageState: MessageStateType;
+    declare chatState: ChatStateType;
+    declare initState: InitStateType;
+    declare config: ConfigType;
+
     /**
      * Constructor with defaults
      * DEFAULTS: CONFIDENT archetype, FAST pacing, regression enabled, UI shown, logging off
@@ -990,7 +996,7 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
                     </div>
                 )}
 
-                {/* Unlocked topics (NEW) */}
+                {/* Unlocked topics */}
                 {unlockedTopics.length > 0 && (
                     <div style={{ marginTop: '12px' }}>
                         <div style={{
