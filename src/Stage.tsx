@@ -930,7 +930,7 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            color: '#212529',
+                            color: '#E1E8F0',
                             fontSize: '12px',
                             fontWeight: '600'
                         }}>
@@ -946,8 +946,6 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
                         Stage progress: {Math.round(stageProgress)}%
                     </div>
                 </div>
-
-                {/* Settings - FIXED: Removed Character Growth */}
                 <div style={{
                     marginTop: '12px',
                     paddingTop: '12px',
@@ -969,7 +967,6 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
                         <div>{characterArchetype.toUpperCase()} archetype</div>
                         <div>{pacingSpeed.toUpperCase()} pacing</div>
                         <div>Combined: {combinedMultiplier}× speed</div>
-                        {/* REMOVED: Character Growth line */}
                     </div>
                 </div>
 
