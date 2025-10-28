@@ -10,7 +10,7 @@ project_name: "Slow Burn Romance"
 tagline: "Progressive romance system with in-chat configuration"
 
 # Visibility: 'PUBLIC', 'PRIVATE', or 'UNLISTED'
-visibility: 'PUBLIC'
+visibility: 'UNLISTED'
 
 # Display position: 'ADJACENT' | 'NONE' | 'COVER' | 'FULLSCREEN'
 position: 'ADJACENT'

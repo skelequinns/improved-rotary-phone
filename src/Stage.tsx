@@ -1,8 +1,16 @@
 /**
  * ============================================================================
- * SLOW BURN ROMANCE STAGE - OPTIMIZED
+ * SLOW BURN ROMANCE STAGE - OPTIMIZED & FIXED
  * ============================================================================
  * A comprehensive romance progression system for LLM character bots
+ *
+ * FIXES APPLIED (2025-10-28):
+ * - Added chatState null check in render() to prevent infinite loop
+ * - Added safe defaults for array properties
+ * - Enhanced constructor with defensive initialization
+ * - Added messageState to load() return
+ * - Added division-by-zero protection in stageProgress
+ * - Wrapped load() in try-catch for error handling
  *
  * Features:
  * - 7 relationship stages (Strangers → Romance)
@@ -270,6 +278,8 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
     /**
      * Constructor with defaults
      * DEFAULTS: CONFIDENT archetype, FAST pacing, regression enabled, UI shown, logging off
+     * 
+     * FIXED: Enhanced defensive initialization for chatState
      */
     constructor(data: InitialData<InitStateType, ChatStateType, MessageStateType, ConfigType>) {
         super(data);
@@ -283,14 +293,14 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
             verboseLogging: config?.verboseLogging !== undefined ? config.verboseLogging : false
         };
 
-        // FIXED: Ensure archetype and pacing are always set, even if messageState exists
+        // FIXED: Ensure archetype and pacing are always set
         if (!messageState) {
             this.messageState = this.createInitialMessageState();
         } else {
-            // Validate and repair existing state to ensure archetype/pacing are set
             this.messageState = this.validateAndRepairState(messageState);
         }
 
+        // CRITICAL FIX: Always ensure chatState has all required properties
         if (!chatState) {
             this.chatState = {
                 permanentlyUnlockedTopics: [],
@@ -298,10 +308,21 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
                 characterGrowthLevel: 0,
                 peakAffection: 0
             };
+        } else {
+            // DEFENSIVE: Ensure all array properties exist even if chatState is provided
+            this.chatState = {
+                permanentlyUnlockedTopics: chatState.permanentlyUnlockedTopics || [],
+                significantEvents: chatState.significantEvents || [],
+                characterGrowthLevel: chatState.characterGrowthLevel || 0,
+                peakAffection: chatState.peakAffection || 0
+            };
         }
 
+        // Initialize initState with defaults if not provided
         if (!initState) {
             this.initState = this.createInitialInitState();
+        } else {
+            this.initState = initState;
         }
 
         this.log("Stage constructor completed.");
@@ -327,31 +348,68 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
         };
     }
 
+    /**
+     * FIXED: Enhanced with try-catch and returns messageState
+     */
     async load(): Promise<Partial<LoadResponse<InitStateType, ChatStateType, MessageStateType>>> {
         this.log("Stage load() called");
 
-        const characterCount = Object.keys(this.characters || {}).length;
-        if (characterCount === 0) {
+        try {
+            const characterCount = Object.keys(this.characters || {}).length;
+            if (characterCount === 0) {
+                return {
+                    success: false,
+                    error: "No characters found. Slow Burn Romance stage requires at least one character.",
+                    initState: null,
+                    chatState: null,
+                    messageState: null
+                };
+            }
+
+            // CRITICAL FIX: Ensure all state is initialized
+            if (!this.chatState) {
+                this.chatState = {
+                    permanentlyUnlockedTopics: [],
+                    significantEvents: [],
+                    characterGrowthLevel: 0,
+                    peakAffection: 0
+                };
+            } else {
+                // Ensure arrays are initialized
+                this.chatState.permanentlyUnlockedTopics = this.chatState.permanentlyUnlockedTopics || [];
+                this.chatState.significantEvents = this.chatState.significantEvents || [];
+            }
+
+            if (this.messageState) {
+                this.messageState = this.validateAndRepairState(this.messageState);
+            } else {
+                this.messageState = this.createInitialMessageState();
+            }
+
+            if (!this.initState) {
+                this.initState = this.createInitialInitState();
+            }
+
+            this.log(`Stage loaded successfully. Affection: ${this.messageState.affection}, Stage: ${this.messageState.relationshipStage}`);
+
+            // FIXED: Return messageState in load response
+            return {
+                success: true,
+                error: null,
+                initState: this.initState,
+                chatState: this.chatState,
+                messageState: this.messageState
+            };
+        } catch (error) {
+            console.error("[SlowBurnRomance] Error during load:", error);
             return {
                 success: false,
-                error: "No characters found. Slow Burn Romance stage requires at least one character.",
+                error: `Load failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
                 initState: null,
-                chatState: null
+                chatState: null,
+                messageState: null
             };
         }
-
-        if (this.messageState) {
-            this.messageState = this.validateAndRepairState(this.messageState);
-        }
-
-        this.log(`Stage loaded successfully.`);
-
-        return {
-            success: true,
-            error: null,
-            initState: this.initState,
-            chatState: this.chatState
-        };
     }
 
     async setState(state: MessageStateType): Promise<void> {
@@ -645,6 +703,293 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
         };
     }
 
+    private generateCorrectionDirections(reasons: string[]): string {
+        return "Your previous response was too forward for the current relationship stage. Reasons: " + reasons.join(', ');
+    }
+
+    private detectEmotionalMoments(content: string, analysis: BotAnalysis): string[] {
+        const moments: string[] = [];
+
+        if (analysis.showsVulnerability) {
+            moments.push("Character shared something vulnerable");
+        }
+
+        if (analysis.hasRomanticLanguage && this.messageState.affection >= UNLOCKABLE_BEHAVIORS.flirty_banter) {
+            moments.push("Romantic feelings acknowledged");
+        }
+
+        if (analysis.usesTouchDescriptions && this.messageState.affection >= UNLOCKABLE_BEHAVIORS.comfortable_touch) {
+            moments.push("Physical affection expressed");
+        }
+
+        return moments;
+    }
+
+    /**
+     * ========================================================================
+     * STATE VALIDATION
+     * ========================================================================
+     */
+
+    private validateAndRepairState(state: MessageStateType): MessageStateType {
+        const repaired = { ...state };
+
+        // Validate affection bounds
+        if (repaired.affection < 0) repaired.affection = 0;
+        if (repaired.affection > 250) repaired.affection = 250;
+
+        // Ensure stage matches affection
+        const correctStage = this.determineStage(repaired.affection);
+        if (repaired.relationshipStage !== correctStage) {
+            repaired.relationshipStage = correctStage;
+        }
+
+        // FIXED: Validate archetype - ensure it's always set
+        if (!repaired.characterArchetype || !Object.values(CharacterArchetype).includes(repaired.characterArchetype)) {
+            repaired.characterArchetype = CharacterArchetype.CONFIDENT;
+            this.log("⚠️ Archetype was missing or invalid, reset to CONFIDENT");
+        }
+
+        // FIXED: Validate pacing - ensure it's always set
+        if (!repaired.pacingSpeed || !Object.values(PacingSpeed).includes(repaired.pacingSpeed)) {
+            repaired.pacingSpeed = PacingSpeed.FAST;
+            this.log("⚠️ Pacing was missing or invalid, reset to FAST");
+        }
+
+        return repaired;
+    }
+
+    /**
+     * ========================================================================
+     * LOGGING
+     * ========================================================================
+     */
+
+    private log(message: string): void {
+        if (this.config && this.config.verboseLogging) {
+            console.log(`[SlowBurnRomance] ${message}`);
+        }
+    }
+
+    /**
+     * ========================================================================
+     * RENDER METHOD - FULLY FIXED VERSION
+     * ========================================================================
+     * CRITICAL FIXES:
+     * 1. Added chatState null check
+     * 2. Added safe default for unlockedTopics
+     * 3. Added division-by-zero protection for stageProgress
+     */
+    render(): ReactElement {
+        // CRITICAL FIX #1: Check ALL required state including chatState
+        if (!this.config || !this.messageState || !this.initState || !this.chatState) {
+            return <></>;
+        }
+
+        if (!this.config.showProgressUI) {
+            return <></>;
+        }
+
+        const { affection, relationshipStage, characterArchetype, pacingSpeed } = this.messageState;
+
+        const stageKeys = Object.keys(STAGE_THRESHOLDS) as RelationshipStage[];
+        const currentStageIndex = stageKeys.indexOf(relationshipStage);
+        const currentStageMin = STAGE_THRESHOLDS[relationshipStage];
+        const nextStageMin = currentStageIndex < stageKeys.length - 1 ?
+            STAGE_THRESHOLDS[stageKeys[currentStageIndex + 1]] : 250;
+
+        // FIXED: Added division-by-zero protection
+        const stageProgress = (nextStageMin - currentStageMin) > 0 
+            ? ((affection - currentStageMin) / (nextStageMin - currentStageMin)) * 100 
+            : 100;
+
+        const unlockedBehaviors = Object.keys(UNLOCKABLE_BEHAVIORS).filter(
+            behavior => affection >= UNLOCKABLE_BEHAVIORS[behavior]
+        );
+
+        // CRITICAL FIX #2: Add safe default for unlockedTopics
+        const unlockedTopics = this.chatState?.permanentlyUnlockedTopics || [];
+
+        const combinedMultiplier = (ARCHETYPE_MULTIPLIERS[characterArchetype] * PACING_MULTIPLIERS[pacingSpeed]).toFixed(2);
+
+        return (
+            <div style={{
+                padding: '16px',
+                backgroundColor: '#f8f9fa',
+                borderRadius: '8px',
+                fontFamily: 'system-ui, -apple-system, sans-serif',
+                fontSize: '14px',
+                maxWidth: '300px'
+            }}>
+                <div style={{ marginBottom: '16px' }}>
+                    <div style={{
+                        fontSize: '16px',
+                        fontWeight: 'bold',
+                        color: '#212529',
+                        marginBottom: '8px'
+                    }}>
+                        Relationship Progress
+                    </div>
+                    <div style={{
+                        fontSize: '12px',
+                        color: '#6c757d',
+                        marginBottom: '12px'
+                    }}>
+                        Stage: {relationshipStage.replace('_', ' ').toUpperCase()}
+                    </div>
+
+                    {/* Affection bar */}
+                    <div style={{
+                        backgroundColor: '#e9ecef',
+                        borderRadius: '4px',
+                        height: '24px',
+                        position: 'relative',
+                        overflow: 'hidden'
+                    }}>
+                        <div style={{
+                            position: 'absolute',
+                            left: 0,
+                            top: 0,
+                            bottom: 0,
+                            width: `${(affection / 250) * 100}%`,
+                            backgroundColor: this.getProgressColor(relationshipStage),
+                            transition: 'width 0.3s ease'
+                        }}></div>
+                        <div style={{
+                            position: 'absolute',
+                            left: 0,
+                            right: 0,
+                            top: 0,
+                            bottom: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#212529',
+                            fontSize: '12px',
+                            fontWeight: '600'
+                        }}>
+                            {affection} / 250
+                        </div>
+                    </div>
+
+                    <div style={{
+                        marginTop: '8px',
+                        fontSize: '11px',
+                        color: '#6c757d'
+                    }}>
+                        Stage progress: {Math.round(stageProgress)}%
+                    </div>
+                </div>
+
+                {/* Settings */}
+                <div style={{
+                    marginTop: '12px',
+                    paddingTop: '12px',
+                    borderTop: '1px solid #dee2e6'
+                }}>
+                    <div style={{
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        color: '#495057',
+                        marginBottom: '6px'
+                    }}>
+                        Settings:
+                    </div>
+                    <div style={{
+                        fontSize: '11px',
+                        color: '#6c757d',
+                        lineHeight: '1.5'
+                    }}>
+                        <div>{characterArchetype.toUpperCase()} archetype</div>
+                        <div>{pacingSpeed.toUpperCase()} pacing</div>
+                        <div>Combined: {combinedMultiplier}× speed</div>
+                    </div>
+                </div>
+
+                {/* Unlocked behaviors */}
+                {unlockedBehaviors.length > 0 && (
+                    <div style={{ marginTop: '12px' }}>
+                        <div style={{
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            color: '#495057',
+                            marginBottom: '6px'
+                        }}>
+                            Unlocked Behaviors:
+                        </div>
+                        <div style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: '4px'
+                        }}>
+                            {unlockedBehaviors.slice(-3).map(behavior => (
+                                <span key={behavior} style={{
+                                    padding: '2px 8px',
+                                    backgroundColor: '#d3f9d8',
+                                    color: '#2b8a3e',
+                                    borderRadius: '12px',
+                                    fontSize: '10px'
+                                }}>
+                                    {behavior.replace('_', ' ')}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Unlocked topics */}
+                {unlockedTopics.length > 0 && (
+                    <div style={{ marginTop: '12px' }}>
+                        <div style={{
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            color: '#495057',
+                            marginBottom: '6px'
+                        }}>
+                            Unlocked Topics:
+                        </div>
+                        <div style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: '4px'
+                        }}>
+                            {unlockedTopics.map(topic => (
+                                <span key={topic} style={{
+                                    padding: '2px 8px',
+                                    backgroundColor: '#e7f5ff',
+                                    color: '#1971c2',
+                                    borderRadius: '12px',
+                                    fontSize: '10px'
+                                }}>
+                                    {topic.replace('_', ' ')}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    private getProgressColor(stage: RelationshipStage): string {
+        const colors: { [key in RelationshipStage]: string } = {
+            [RelationshipStage.STRANGERS]: '#868e96',
+            [RelationshipStage.ACQUAINTANCES]: '#74c0fc',
+            [RelationshipStage.FRIENDS]: '#51cf66',
+            [RelationshipStage.GOOD_FRIENDS]: '#69db7c',
+            [RelationshipStage.CLOSE_FRIENDS]: '#ffd43b',
+            [RelationshipStage.ROMANTIC_TENSION]: '#ff8787',
+            [RelationshipStage.ROMANCE]: '#ff6b6b'
+        };
+        return colors[stage];
+    }
+
+    /**
+     * ========================================================================
+     * STAGE DETERMINATION
+     * ========================================================================
+     */
+
     private determineStage(affection: number): RelationshipStage {
         if (affection >= STAGE_THRESHOLDS[RelationshipStage.ROMANCE]) return RelationshipStage.ROMANCE;
         if (affection >= STAGE_THRESHOLDS[RelationshipStage.ROMANTIC_TENSION]) return RelationshipStage.ROMANTIC_TENSION;
@@ -776,278 +1121,5 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
         return this.chatState.permanentlyUnlockedTopics.map(topic =>
             topic.replace('_', ' ')
         );
-    }
-
-    private generateCorrectionDirections(reasons: string[]): string {
-        return "Your previous response was too forward for the current relationship stage. Reasons: " + reasons.join(', ');
-    }
-
-    private detectEmotionalMoments(content: string, analysis: BotAnalysis): string[] {
-        const moments: string[] = [];
-
-        if (analysis.showsVulnerability) {
-            moments.push("Character shared something vulnerable");
-        }
-
-        if (analysis.hasRomanticLanguage && this.messageState.affection >= UNLOCKABLE_BEHAVIORS.flirty_banter) {
-            moments.push("Romantic feelings acknowledged");
-        }
-
-        if (analysis.usesTouchDescriptions && this.messageState.affection >= UNLOCKABLE_BEHAVIORS.comfortable_touch) {
-            moments.push("Physical affection expressed");
-        }
-
-        return moments;
-    }
-
-    /**
-     * ========================================================================
-     * STATE VALIDATION
-     * ========================================================================
-     */
-
-    private validateAndRepairState(state: MessageStateType): MessageStateType {
-        const repaired = { ...state };
-
-        // Validate affection bounds
-        if (repaired.affection < 0) repaired.affection = 0;
-        if (repaired.affection > 250) repaired.affection = 250;
-
-        // Ensure stage matches affection
-        const correctStage = this.determineStage(repaired.affection);
-        if (repaired.relationshipStage !== correctStage) {
-            repaired.relationshipStage = correctStage;
-        }
-
-        // FIXED: Validate archetype - ensure it's always set
-        if (!repaired.characterArchetype || !Object.values(CharacterArchetype).includes(repaired.characterArchetype)) {
-            repaired.characterArchetype = CharacterArchetype.CONFIDENT;
-            this.log("⚠️ Archetype was missing or invalid, reset to CONFIDENT");
-        }
-
-        // FIXED: Validate pacing - ensure it's always set
-        if (!repaired.pacingSpeed || !Object.values(PacingSpeed).includes(repaired.pacingSpeed)) {
-            repaired.pacingSpeed = PacingSpeed.FAST;
-            this.log("⚠️ Pacing was missing or invalid, reset to FAST");
-        }
-
-        return repaired;
-    }
-
-    /**
-     * ========================================================================
-     * LOGGING
-     * ========================================================================
-     */
-
-    private log(message: string): void {
-        if (this.config && this.config.verboseLogging) {
-            console.log(`[SlowBurnRomance] ${message}`);
-        }
-    }
-
-    /**
-     * ========================================================================
-     * RENDER METHOD - FIXED VERSION
-     * ========================================================================
-     */
-    render(): ReactElement {
-        if (!this.config || !this.messageState || !this.initState) {
-            return <></>;
-        }
-
-        if (!this.config.showProgressUI) {
-            return <></>;
-        }
-
-        const { affection, relationshipStage, characterArchetype, pacingSpeed } = this.messageState;
-
-        const stageKeys = Object.keys(STAGE_THRESHOLDS) as RelationshipStage[];
-        const currentStageIndex = stageKeys.indexOf(relationshipStage);
-        const currentStageMin = STAGE_THRESHOLDS[relationshipStage];
-        const nextStageMin = currentStageIndex < stageKeys.length - 1 ?
-            STAGE_THRESHOLDS[stageKeys[currentStageIndex + 1]] : 250;
-
-        const stageProgress = ((affection - currentStageMin) / (nextStageMin - currentStageMin)) * 100;
-
-        const unlockedBehaviors = Object.keys(UNLOCKABLE_BEHAVIORS).filter(
-            behavior => affection >= UNLOCKABLE_BEHAVIORS[behavior]
-        );
-
-        const unlockedTopics = this.chatState.permanentlyUnlockedTopics;
-
-        const combinedMultiplier = (ARCHETYPE_MULTIPLIERS[characterArchetype] * PACING_MULTIPLIERS[pacingSpeed]).toFixed(2);
-
-        return (
-            <div style={{
-                padding: '16px',
-                backgroundColor: '#f8f9fa',
-                borderRadius: '8px',
-                fontFamily: 'system-ui, -apple-system, sans-serif',
-                fontSize: '14px',
-                maxWidth: '300px'
-            }}>
-                <div style={{ marginBottom: '16px' }}>
-                    <div style={{
-                        fontSize: '16px',
-                        fontWeight: 'bold',
-                        color: '#212529',
-                        marginBottom: '8px'
-                    }}>
-                        Relationship Progress
-                    </div>
-                    <div style={{
-                        fontSize: '12px',
-                        color: '#6c757d',
-                        marginBottom: '12px'
-                    }}>
-                        Stage: {relationshipStage.replace('_', ' ').toUpperCase()}
-                    </div>
-
-                    {/* Affection bar */}
-                    <div style={{
-                        backgroundColor: '#e9ecef',
-                        borderRadius: '4px',
-                        height: '24px',
-                        position: 'relative',
-                        overflow: 'hidden'
-                    }}>
-                        <div style={{
-                            position: 'absolute',
-                            left: 0,
-                            top: 0,
-                            bottom: 0,
-                            width: `${(affection / 250) * 100}%`,
-                            backgroundColor: this.getProgressColor(relationshipStage),
-                            transition: 'width 0.3s ease'
-                        }}></div>
-                        <div style={{
-                            position: 'absolute',
-                            left: 0,
-                            right: 0,
-                            top: 0,
-                            bottom: 0,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: '#212529',
-                            fontSize: '12px',
-                            fontWeight: '600'
-                        }}>
-                            {affection} / 250
-                        </div>
-                    </div>
-
-                    <div style={{
-                        marginTop: '8px',
-                        fontSize: '11px',
-                        color: '#6c757d'
-                    }}>
-                        Stage progress: {Math.round(stageProgress)}%
-                    </div>
-                </div>
-
-                {/* Settings - FIXED: Removed Character Growth */}
-                <div style={{
-                    marginTop: '12px',
-                    paddingTop: '12px',
-                    borderTop: '1px solid #dee2e6'
-                }}>
-                    <div style={{
-                        fontSize: '12px',
-                        fontWeight: '600',
-                        color: '#495057',
-                        marginBottom: '6px'
-                    }}>
-                        Settings:
-                    </div>
-                    <div style={{
-                        fontSize: '11px',
-                        color: '#6c757d',
-                        lineHeight: '1.5'
-                    }}>
-                        <div>{characterArchetype.toUpperCase()} archetype</div>
-                        <div>{pacingSpeed.toUpperCase()} pacing</div>
-                        <div>Combined: {combinedMultiplier}× speed</div>
-                        {/* REMOVED: Character Growth line */}
-                    </div>
-                </div>
-
-                {/* Unlocked behaviors */}
-                {unlockedBehaviors.length > 0 && (
-                    <div style={{ marginTop: '12px' }}>
-                        <div style={{
-                            fontSize: '12px',
-                            fontWeight: '600',
-                            color: '#495057',
-                            marginBottom: '6px'
-                        }}>
-                            Unlocked Behaviors:
-                        </div>
-                        <div style={{
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            gap: '4px'
-                        }}>
-                            {unlockedBehaviors.slice(-3).map(behavior => (
-                                <span key={behavior} style={{
-                                    padding: '2px 8px',
-                                    backgroundColor: '#d3f9d8',
-                                    color: '#2b8a3e',
-                                    borderRadius: '12px',
-                                    fontSize: '10px'
-                                }}>
-                                    {behavior.replace('_', ' ')}
-                                </span>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* Unlocked topics */}
-                {unlockedTopics.length > 0 && (
-                    <div style={{ marginTop: '12px' }}>
-                        <div style={{
-                            fontSize: '12px',
-                            fontWeight: '600',
-                            color: '#495057',
-                            marginBottom: '6px'
-                        }}>
-                            Unlocked Topics:
-                        </div>
-                        <div style={{
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            gap: '4px'
-                        }}>
-                            {unlockedTopics.map(topic => (
-                                <span key={topic} style={{
-                                    padding: '2px 8px',
-                                    backgroundColor: '#e7f5ff',
-                                    color: '#1971c2',
-                                    borderRadius: '12px',
-                                    fontSize: '10px'
-                                }}>
-                                    {topic.replace('_', ' ')}
-                                </span>
-                            ))}
-                        </div>
-                    </div>
-                )}
-            </div>
-        );
-    }
-
-    private getProgressColor(stage: RelationshipStage): string {
-        const colors: { [key in RelationshipStage]: string } = {
-            [RelationshipStage.STRANGERS]: '#868e96',
-            [RelationshipStage.ACQUAINTANCES]: '#74c0fc',
-            [RelationshipStage.FRIENDS]: '#51cf66',
-            [RelationshipStage.GOOD_FRIENDS]: '#69db7c',
-            [RelationshipStage.CLOSE_FRIENDS]: '#ffd43b',
-            [RelationshipStage.ROMANTIC_TENSION]: '#ff8787',
-            [RelationshipStage.ROMANCE]: '#ff6b6b'
-        };
-        return colors[stage];
     }
 }
