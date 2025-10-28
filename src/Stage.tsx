@@ -270,7 +270,7 @@ const CONTENT_KEYWORDS = {
         'never want you', 'never love you', 'go fuck yourself'
     ],
     sexual: [
-        'sex', 'sexual', 'fuck', 'cock', 'pussy', 'dick', 'naked', 'bed',
+        'have sex', 'cock', 'pussy', 'dick', 'naked', 'bed',
         'seduce', 'desire', 'lust', 'aroused', 'explicit', 'arousal', 'make love'
     ],
     humor: [
