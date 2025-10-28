@@ -1,71 +1,159 @@
-# All of these fields are optional, as is this file itself,
-#   in which case these values can be managed in the UI.
+# ============================================================================
+# SLOW BURN ROMANCE STAGE - CONFIGURATION
+# ============================================================================
+# This file defines the metadata and configuration schema for the stage.
 
-# The name of the stage.
-# project_name: "Stage Template"
+# The name of the stage
+project_name: "Slow Burn Romance"
 
-# A short tagline to show in search.
-# tagline: "A base template for all stages."
+# A short tagline to show in search
+tagline: "Progressive romance system with in-chat configuration"
 
-# 'PUBLIC', 'PRIVATE', or 'UNLISTED'.
-# visibility: 'PUBLIC'
+# Visibility: 'PUBLIC', 'PRIVATE', or 'UNLISTED'
+visibility: 'PUBLIC'
 
-# 'ADJACENT' | 'NONE' | 'COVER' | 'FULLSCREEN'
-# 'ADJACENT' is default. The frame will display on the side of the
-#   chat on desktop and above/in the top half of the chat on mobile.
-# 'NONE' will not display, only run.
-# 'COVER' will, indeed, cover the chat history completely,
-#   but leave the text input box.
-# 'FULLSCREEN' will make nothing below the header bar
-#   show except for your stage.
-# position: 'ADJACENT'
+# Display position: 'ADJACENT' | 'NONE' | 'COVER' | 'FULLSCREEN'
+position: 'ADJACENT'
 
-# Self-explanatory.
-# tags:
-#  - 'Stage'
-#  - 'Admin'
-#  - 'Template'
-#  - 'Base'
+# Tags for discovery
+tags:
+  - 'Romance'
+  - 'Progression'
+  - 'Relationship'
+  - 'Slow Burn'
+  - 'Character Development'
+  - 'Affection System'
+  - 'Configurable'
 
-# The schema of any user-supplied config.
-# If your stage requires a configuration but has no
-#   defined schema, it won't work.
+# ============================================================================
+# USER CONFIGURATION SCHEMA (System-level only)
+# ============================================================================
+# Archetype and pacing are now set via in-chat commands
+
 config_schema:
   type: object
+  required: []
   properties:
-    health:
-      type: integer
-      default: 100
 
-# The schema of the state that you store.
-# This isn't needed even if you do store state,
-#   and is here more for future use cases to
-#   optimize storage.
+    # Enable Regression - can affection decrease?
+    enableRegression:
+      type: boolean
+      title: "Enable Regression"
+      description: "If enabled, negative behaviors (rudeness, pushing boundaries) cause affection loss. If disabled, affection can only increase."
+      default: true
+
+    # Show Progress UI - display the relationship status sidebar
+    showProgressUI:
+      type: boolean
+      title: "Show Progress UI"
+      description: "Display the relationship status sidebar showing affection, stage, and unlocked content."
+      default: true
+
+    # Verbose Logging - detailed console logs for debugging
+    verboseLogging:
+      type: boolean
+      title: "Verbose Logging"
+      description: "Enable detailed console logging for debugging and development. Turn off for production."
+      default: false
+
+# ============================================================================
+# STATE SCHEMAS
+# ============================================================================
+
 state_schema:
+  # Init state - set once at chat creation
   init:
     type: object
     properties:
-      grid:
+      proceduralSeed:
         type: string
+      chatCreatedAt:
+        type: integer
+
+  # Message state - NOW includes archetype and pacing (user-configurable via commands)
   message:
     type: object
     properties:
-      angry:
-        type: boolean
-        default: true
+      # User-configurable via in-chat commands
+
+      # Progression tracking
+      affection:
+        type: integer
+        minimum: 0
+        maximum: 250
+      relationshipStage:
+        type: string
+        enum:
+          - "strangers"
+          - "acquaintances"
+          - "friends"
+          - "good_friends"
+          - "close_friends"
+          - "romantic_tension"
+          - "romance"
+      flags:
+        type: object
+        properties:
+          firstCompliment:
+            type: boolean
+          sharedVulnerability:
+            type: boolean
+          hadArgument:
+            type: boolean
+          metFriends:
+            type: boolean
+          firstDateAttempt:
+            type: boolean
+          confessedFeelings:
+            type: boolean
+          firstPhysicalContact:
+            type: boolean
+      discussedTopics:
+        type: array
+        items:
+          type: string
+      recentConversationSummary:
+        type: array
+        items:
+          type: string
+      sessionStartTime:
+        type: integer
+      messagesThisSession:
+        type: integer
+
+  # Chat state - persists across all branches/swipes
   chat:
     type: object
     properties:
-      visited:
+      permanentlyUnlockedTopics:
         type: array
         items:
-          type: integer
+          type: string
+      significantEvents:
+        type: array
+        items:
+          type: object
+          properties:
+            event:
+              type: string
+            timestamp:
+              type: integer
+            affectionAtTime:
+              type: integer
+      characterGrowthLevel:
+        type: integer
+        minimum: 0
+        maximum: 100
+      peakAffection:
+        type: integer
+        minimum: 0
+        maximum: 250
 
-# Whether to publish as 'Anonymous' instead of under your username.
-# is_anonymous: false
+# Whether to publish anonymously
+is_anonymous: false
 
-# Self-explanatory.
-# ratings_disabled: false
+# Disable ratings/reviews
+ratings_disabled: false
 
 # This is here for future cases where ex. you need user secrets,
 #    but currently does nothing.
@@ -75,9 +163,8 @@ state_schema:
 #    you should not make or set this value.
 # github_path will be added if it does not exist. It is the URL of the repo.
 
-
 github_path: 'https://github.com/skelequinns/improved-rotary-phone'
 
 
-extension_id: 'improved-rotary-phone-fa4743f21e74'
+extension_id: 'improved-rotary-phone-ad24a45468fd'
 

@@ -266,6 +266,7 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
     declare chatState: ChatStateType;
     declare initState: InitStateType;
     declare config: ConfigType;
+    declare characters: any; // Contains character data from the chat
 
     /**
      * Constructor with defaults
@@ -843,13 +844,13 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
      * RENDER METHOD
      * ========================================================================
      */
-    render(): ReactElement | null {
+    render(): ReactElement {
         if (!this.config || !this.messageState || !this.initState) {
-            return null;
+            return <div>Loading...</div>;
         }
 
         if (!this.config.showProgressUI) {
-            return null;
+            return <div></div>;
         }
 
         const { affection, relationshipStage, characterArchetype, pacingSpeed } = this.messageState;
