@@ -239,13 +239,24 @@ const UNLOCKABLE_BEHAVIORS: { [key: string]: number } = {
 const CONTENT_KEYWORDS = {
     compliments: [
         'beautiful', 'handsome', 'cute', 'pretty', 'gorgeous', 'amazing',
-        'wonderful', 'incredible', 'perfect', 'stunning', 'attractive'
+        'wonderful', 'incredible', 'perfect', 'stunning', 'attractive',
+        'genius', 'fantastic', 'smart', 'intelligent', 'unique', 'brilliant',
+        'interesting', 'clever', 'capable', 'appreciate', 'appreciative',
+        'bright', 'capable', 'cheerful', 'commendable', 'composed', 'dedicated',
+        'determined', 'encourage', 'engaging', 'enthusiastic', 'enthusiasm',
+        'excellent', 'friendly', 'generous', 'genuine', 'good choice', 'good call',
+        'good idea', 'great idea', 'great choice', 'great call', 'helpful', 'impressive',
+        'likable', 'lovely', 'loyal', 'motivated', 'observant', 'optimistic', 'optimism',
+        'outstanding', 'perceptive', 'polite', 'prudent', 'proactive', 'respectful', 'respect',
+        'sensible', 'sincere', 'superb', 'terrific', 'thoughtful', 'tremendous', 'trustworthy',
+        'i trust you', 'i believe in you'
     ],
     romantic: [
         'i love you', 'i adore you', 'i cherish you', 'kiss', 'date',
         'commit', 'be together', 'future together', 'marry me', 'marry you',
         'caress', 'our relationship', 'affection', 'date with me', 'date you',
-        'be with you'
+        'be with you','you are perfect', 'you\'re perfect', 'you are my everything',
+        'you make me happy', 'i want you'
     ],
     vulnerability: [
         'scared', 'afraid', 'worried', 'insecure', 'anxious', 'fear',
