@@ -605,13 +605,15 @@ export class Stage extends StageBase<InitStateType, ChatStateType, MessageStateT
     private asksAboutCharacter(text: string): boolean {
         const characterQuestions = [
             'what do you', 'how do you feel', 'tell me about',
-            'what are you', 'who are you', 'what\'s your'
+            'what are you', 'who are you', 'what\'s your',
+            'what\'s your name', 'how are you', 'how do you',
+            'inquire', 'ask'
         ];
         return characterQuestions.some(phrase => text.includes(phrase));
     }
 
     private detectsFlirtation(text: string): boolean {
-        const flirtyPatterns = ['wink', 'smirk', 'tease', 'playful', 'coy', 'flirt'];
+        const flirtyPatterns = ['wink', 'smirk', 'tease', 'playful', 'coy', 'flirt', 'purr'];
         const lowerText = text.toLowerCase();
         return flirtyPatterns.some(pattern => lowerText.includes(pattern));
     }
